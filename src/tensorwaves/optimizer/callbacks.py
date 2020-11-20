@@ -12,6 +12,21 @@ from tqdm import tqdm
 from tensorwaves.interfaces import Estimator
 
 
+class Loadable(ABC):
+    @abstractmethod
+    @property
+    def latest_parameters(self) -> dict:
+        pass
+
+    @abstractmethod
+    def set_latest_parameters(self) -> None:
+        pass
+
+    @abstractmethod
+    def load_latest_parameters(self, filename: str) -> dict:
+        pass
+
+
 class Callback(ABC):
     @abstractmethod
     def __call__(self, parameters: dict, estimator_value: float) -> None:
@@ -34,7 +49,7 @@ class ProgressBar(Callback):
         self.__progress_bar.close()
 
 
-class YAMLSummary(Callback):
+class YAMLSummary(Callback, Loadable):
     def __init__(
         self,
         filename: str,
@@ -56,6 +71,7 @@ class YAMLSummary(Callback):
         if not isinstance(estimator, Estimator):
             raise TypeError(f"Requires an in {Estimator.__name__} instance")
         self.__estimator_type: str = estimator.__class__.__name__
+        self.__parameters = dict()
 
     def __call__(self, parameters: dict, estimator_value: float) -> None:
         self.__function_call += 1
@@ -84,13 +100,22 @@ class YAMLSummary(Callback):
     def finalize(self) -> None:
         self.__stream.close()
 
+    @property
+    def latest_parameters(self) -> dict:
+        return self.__parameters
 
-class CSVSummary(Callback):
+    def set_latest_parameters(self, parameters: dict) -> None:
+        self.__parameters = parameters
+
+    def load_latest_parameters(self, filename: str) -> dict:
+        with open(filename) as stream:
+            fit_stats = yaml.load(stream, Loader=yaml.SafeLoader)
+        return fit_stats["Parameters"]
+
+
+class CSVSummary(Callback, Loadable):
     def __init__(
-        self,
-        filename: str,
-        estimator: Estimator,
-        step_size: int = 10,
+        self, filename: str, estimator: Estimator, step_size: int = 10
     ) -> None:
         """Log fit parameters and the estimator value to a CSV file."""
         self.__function_call = -1
@@ -127,6 +152,13 @@ class CSVSummary(Callback):
 
     def finalize(self) -> None:
         self.__stream.close()
+
+    def load_latest_parameters(self, filename: str) -> dict:
+        fit_traceback = pd.read_csv(filename)
+        parameter_traceback = fit_traceback[fit_traceback.columns[3:]]
+        parameter_names = parameter_traceback.columns
+        latest_parameter_values = parameter_traceback.iloc[-1]
+        return dict(zip(parameter_names, latest_parameter_values))
 
 
 class TFSummary(Callback):
