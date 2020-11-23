@@ -1,5 +1,6 @@
 """Collection of loggers that can be inserted into an optimizer as callback."""
 
+import pathlib
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import IO, Iterable, List, Optional
@@ -14,16 +15,7 @@ from tensorwaves.interfaces import Estimator
 
 class Loadable(ABC):
     @abstractmethod
-    @property
-    def latest_parameters(self) -> dict:
-        pass
-
-    @abstractmethod
-    def set_latest_parameters(self) -> None:
-        pass
-
-    @abstractmethod
-    def load_latest_parameters(self, filename: str) -> dict:
+    def load_latest_parameters(self) -> dict:
         pass
 
 
@@ -67,11 +59,20 @@ class YAMLSummary(Callback, Loadable):
         """
         self.__function_call = 0
         self.__step_size = step_size
-        self.__stream = open(filename, "w")
-        if not isinstance(estimator, Estimator):
-            raise TypeError(f"Requires an in {Estimator.__name__} instance")
-        self.__estimator_type: str = estimator.__class__.__name__
-        self.__parameters = dict()
+        path = pathlib.Path(filename)
+        if path.exists() and path.is_file():
+            with open(filename) as stream:
+                fit_stats = yaml.load(stream, Loader=yaml.SafeLoader)
+                self.__parameters = fit_stats["Parameters"]
+        else:
+            # I did not implement all logic here #TODO
+            self.__stream = open(filename, "w")
+            if not isinstance(estimator, Estimator):
+                raise TypeError(
+                    f"Requires an in {Estimator.__name__} instance"
+                )
+            self.__estimator_type: str = estimator.__class__.__name__
+            self.__parameters = dict()
 
     def __call__(self, parameters: dict, estimator_value: float) -> None:
         self.__function_call += 1
@@ -100,17 +101,12 @@ class YAMLSummary(Callback, Loadable):
     def finalize(self) -> None:
         self.__stream.close()
 
-    @property
-    def latest_parameters(self) -> dict:
+    def load_latest_parameters(self) -> dict:
+        # we could also make the interface @property def latest_parameters()
+        # but that would imply the implementations have to keep a copy of the
+        # parameters in the class, hence I chose load (can also directly stream
+        # from file)
         return self.__parameters
-
-    def set_latest_parameters(self, parameters: dict) -> None:
-        self.__parameters = parameters
-
-    def load_latest_parameters(self, filename: str) -> dict:
-        with open(filename) as stream:
-            fit_stats = yaml.load(stream, Loader=yaml.SafeLoader)
-        return fit_stats["Parameters"]
 
 
 class CSVSummary(Callback, Loadable):
