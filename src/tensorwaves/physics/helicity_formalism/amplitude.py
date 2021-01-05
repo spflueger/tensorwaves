@@ -63,7 +63,7 @@ class IntensityTF(Function):
         # it is crucial to convert the input data to tensors
         # otherwise the memory footprint can increase dramatically
         newdataset = {x: tf.constant(y) for x, y in dataset.items()}
-        return self._model(newdataset).numpy()
+        return self._model(newdataset)
 
     @property
     def parameters(self) -> Dict[str, tf.Variable]:

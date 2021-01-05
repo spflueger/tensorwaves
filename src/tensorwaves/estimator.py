@@ -2,10 +2,42 @@
 
 All estimators have to implement the `~.interfaces.Estimator` interface.
 """
+from typing import Dict, Optional
+
 import numpy as np
 import tensorflow as tf
 
 from tensorwaves.interfaces import Estimator, Function
+
+
+class _NormalizedFunction(Function):
+    def __init__(
+        self,
+        unnormalized_function: Function,
+        norm_dataset: dict,
+        norm_volume: float = 1.0,
+    ) -> None:
+        self._model = unnormalized_function
+        # it is crucial to convert the input data to tensors
+        # otherwise the memory footprint can increase dramatically
+        self._norm_dataset = {
+            x: tf.constant(y) for x, y in norm_dataset.items()
+        }
+        self._norm_volume = norm_volume
+
+    def __call__(self, dataset: dict) -> tf.Tensor:
+        normalization = tf.multiply(
+            self._norm_volume,
+            tf.reduce_mean(self._model(self._norm_dataset)),
+        )
+        return tf.divide(self._model(dataset), normalization)
+
+    @property
+    def parameters(self) -> Dict[str, tf.Variable]:
+        return self._model.parameters
+
+    def update_parameters(self, new_parameters: dict) -> None:
+        self._model.update_parameters(new_parameters)
 
 
 class UnbinnedNLL(Estimator):
@@ -18,8 +50,13 @@ class UnbinnedNLL(Estimator):
 
     """
 
-    def __init__(self, model: Function, dataset: dict) -> None:
-        self.__model = model
+    def __init__(
+        self, model: Function, dataset: dict, phsp_set: Optional[dict] = None
+    ) -> None:
+        if phsp_set and len(phsp_set) > 0:
+            self.__model: Function = _NormalizedFunction(model, phsp_set)
+        else:
+            self.__model = model
         self.__dataset = dataset
 
     def __call__(self) -> float:
