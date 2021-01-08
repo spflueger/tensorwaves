@@ -2,7 +2,7 @@
 
 All estimators have to implement the `~.interfaces.Estimator` interface.
 """
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import tensorflow as tf
@@ -54,7 +54,9 @@ class UnbinnedNLL(Estimator):
 
     """
 
-    def __init__(self, model: Function, dataset: dict, phsp_set: dict) -> None:
+    def __init__(
+        self, model: Function, dataset: dict, phsp_set: Optional[dict] = None
+    ) -> None:
         if phsp_set and len(phsp_set) > 0:
             self.__model: Function = _NormalizedFunction(model, phsp_set)
         else:
@@ -62,13 +64,22 @@ class UnbinnedNLL(Estimator):
         self.__dataset = dataset
 
     def __call__(self) -> float:
+        return self.__nll().numpy()
+
+    def __nll(self) -> tf.Tensor:
         props = self.__model(self.__dataset)
         logs = tf.math.log(props)
         log_lh = tf.reduce_sum(logs)
-        return -log_lh.numpy()
+        return -log_lh
 
-    def gradient(self) -> np.ndarray:
-        raise NotImplementedError("Gradient not implemented.")
+    def gradient(self, parameters: dict) -> np.ndarray:
+        params = [self.parameters[x] for x in parameters.keys()]
+        with tf.GradientTape() as g:
+            g.watch(params)
+            nll = self.__nll()
+        grads = g.gradient(nll, params)
+        print(grads)
+        return [x.numpy() for x in grads]
 
     @property
     def parameters(self) -> dict:

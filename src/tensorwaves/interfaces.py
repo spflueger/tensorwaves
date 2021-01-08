@@ -46,7 +46,7 @@ class Estimator(ABC):
         """Evaluate discrepancy."""
 
     @abstractmethod
-    def gradient(self) -> list:
+    def gradient(self, parameters: dict) -> list:
         """Compute the gradient of the data set."""
 
     @property
